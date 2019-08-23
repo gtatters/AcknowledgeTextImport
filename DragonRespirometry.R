@@ -33,6 +33,12 @@
 #    For completeness, please enter the date that the file was recorded.  Unfortunately,
 #    Biopac does not save date information in the txt file.
 
+# SET THIS VALUE BASED ON HOW YOU SPANNED THE O2 ANALYSER ####
+FO2.span<-0.2100
+# Change this if you spanned the O2 channel to another value 
+# If you forgot to span the oxygen analyser, then FO2.span should be set to the
+# first baseline FiO2 value
+
 
 #0. Define all libraries used and functions ####
 library("Thermimage")
@@ -41,14 +47,14 @@ library("lattice")
 rm(list = setdiff(ls(), lsf.str()))
 
 #1. Human Inputs - Filename and date of actual experiment ####
-mainDir<-"~/Dropbox/R/MyProjects/AcknowledgeImport/"
+mainDir<-"~/Documents/Github/RProjects/AcknowledgeTextImport/"
 setwd(mainDir)
 getwd() #show working directory
 
 l.files<-list.files(mainDir,all.files=FALSE,full.names=FALSE,recursive=TRUE,
                     include.dirs=TRUE, pattern = "\\.txt$")
 l.files
-(f<-l.files[5])
+(f<-l.files[4])
 
 # filedate<-readline("Provide the file date (YYYY-MM-DD):")
 filedate<-"2018-05-04"
@@ -171,9 +177,9 @@ w1.lag<-which(wr2==max(wr2, na.rm=TRUE))
 c1.lag<-which(cr2==max(cr2, na.rm=TRUE)) 
 o1.lag<-which(or2==max(or2, na.rm=TRUE)) 
 
-w1.lag # WVD lags 14 seconds from baseline switch
+w1.lag # WVD lags 9 seconds from baseline switch
 c1.lag # CO2 lags 30 seconds from baseline switch
-o1.lag # O2 lages 42 seconds from baseline switch
+o1.lag # O2 lages 44 seconds from baseline switch
 
 
 
@@ -330,8 +336,8 @@ for (i in 1:length(calib.points))
 {
   j<-i+1
   x<-unlist(calib.points[i])
-  calib.WVD[i]<-min(WVD[x])
-  calib.FO2[i]<-quantile(FO2[x], probs=seq(0,1,0.1), na.rm=TRUE)[9]
+  calib.WVD[i]<-median(WVD[x])
+  calib.FO2[i]<-quantile(FO2[x], probs=seq(0,1,0.1), na.rm=TRUE)[9] 
   #calib.FCO2[i]<-quantile(FCO2[x], probs=seq(0,1,0.1), na.rm=TRUE)[2]
   calib.FCO2[i]<-median(FCO2[x], na.rm=TRUE)
   #calib.FCO2[i]<-mean(FCO2[which(FCO2[x]<quantile(FCO2[x], probs=seq(0,1,0.1), na.rm=TRUE)[2])])
@@ -405,23 +411,27 @@ if(mean(DewP)<0.5) # 0.5 is arbitrary but less than we can reasonably generate
   DewP[1:nrow(align.data)]<-DP
 }
 
-WVPi<-(611*10^(7.5*DewP/(237.7+DewP)))/1000 
+
+#WVPi<-(611*10^(7.5*DewP/(237.7+DewP)))/1000 
 # converts dew point into WVP in kPa
 # from Handbook of chemistry and physics
-WVPi.t<-WVPi*(26+273)/(DewP+273)
+
+WVPi<-0.1421*WVDi-0.1038
+
+#WVPi.t<-WVPi*(26+273)/(DewP+273)
 # convert to water vapour pressure at RH-300 temperature (~26C)
 WVPe<-0.1421*WVD-0.1038
 # empirically determined conversion from WVD(ug/mL) to WVP (kPa)
 # from Handbook of chemistry and physics table
-DewPte<-15.799*log(WVPe)+6.9848
+#DewPte<-15.799*log(WVPe)+6.9848
 # Dewpoint of excurrent air, required for temperature compensation
 # of FeH2O value
-WVPe.t<-WVPe*(26+273)/(DewPte+273)
+#WVPe.t<-WVPe*(26+273)/(DewPte+273)
 # temperature corrected WVPe to the temperature of the RH-300 meter
 
 # Finalise FH2O values
-FiH2O<-WVPi.t/BP
-FeH2O<-WVPe.t/BP
+FiH2O<-WVPi/BP
+FeH2O<-WVPe/BP
 # define Fi and Fe H2O, required for final respirometry calculations
 
 # Finalise FCO2 values
@@ -429,16 +439,16 @@ FiCO2<-baseline.FCO2
 delta.FCO2<-FCO2-FiCO2
 FeCO2<-FiCO2+delta.FCO2
 
-# Finalise FO2 values
-FO2.span<-0.2095 #####  
-# Change this if span calibrated to another value
-FO2.real<-(1-mean(FiH2O, na.rm=TRUE)-mean(FiCO2, na.rm=TRUE))*(0.2091)
-# this is the true level the oxygen analyser should be (0.2095 if we're using CO2 free air) 
-# to correct our FO2 measurements, multiply oxygen values by FO2.real/FO2.span
-FiO2<-(1-FiH2O-FiCO2)*(0.2091)
+# Finalise FO2 values ####
+
+FO2.span.real<-(1-mean(FiH2O, na.rm=TRUE)-mean(FiCO2, na.rm=TRUE))*(0.2095)
+# this is the true level the oxygen analyser should have been (0.2095 if we're using CO2 free air) 
+# to correct our FO2 measurements, multiply oxygen values by FO2.span.real/FO2.span
+
+FiO2<-(1-FiH2O-FiCO2)*(0.2095)
 # multiplied by 0.2095 because the incurrent oxygen is known from our dewpoint measurement
 # and knowledge of incurrent CO2 levels
-delta.FO2<-(baseline.FO2-FO2)*FO2.real/FO2.span
+delta.FO2<-(baseline.FO2-FO2)*FO2.span.real/FO2.span
 FeO2<-FiO2-delta.FO2
 detach(align.data)
 
@@ -473,13 +483,13 @@ RQ[non.chamber.index]<-NA
 
 pdf(file=f.pdf, width=10, height=10, family="Helvetica")
 par(mfrow=c(4,1), mar=c(3,5,1,1))
-plot(ElapTime[chamber.index], EWL[chamber.index], col="blue", bty="n",
+plot(ElapTime[chamber.index], EWL[chamber.index], col="blue", bty="n", type="l",
      ylab=expression("EWL (mg " ~ H[2]~O ~ "/h)"))
-plot(ElapTime[chamber.index], VO2[chamber.index], col="red",  bty="n",
+plot(ElapTime[chamber.index], VO2[chamber.index], col="red",  bty="n", type="l",
      ylab=expression(VO[2] ~ "(mL " ~ O[2] ~ "/h)"))
-plot(ElapTime[chamber.index], VCO2[chamber.index], col="green", bty="n",
+plot(ElapTime[chamber.index], VCO2[chamber.index], col="green", bty="n", type="l",
      ylab=expression(VCO[2] ~ "(mL " ~ CO[2] ~ "/h)"))
-plot(ElapTime[chamber.index], RQ[chamber.index], col="grey",  bty="n", ylab="RQ",
+plot(ElapTime[chamber.index], RQ[chamber.index], col="grey",  bty="n", ylab="RQ", type="l",
      ylim=c(0.1,1.5))
 detach(align.data)
 dev.off()
@@ -496,5 +506,6 @@ write.csv(output, f.out)
 
 
 mean(RQ, na.rm=T)
+mean(EWL, na.rm=T)
 mean(VCO2, na.rm=T)
 mean(VO2, na.rm=T)
